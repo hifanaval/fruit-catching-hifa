@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rabbit Fruit Catcher 🐰</title>
+<style>
+  /* ===== RESET & BASE ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #1a0a2e;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; overflow: hidden; user-select: none;
+  }
+
+  /* ===== CANVAS WRAPPER ===== */
+  #gameWrapper {
+    position: relative;
+    width: 480px; height: 680px;
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 0 60px rgba(100,60,255,0.5), 0 0 120px rgba(100,60,255,0.2);
+  }
+
+  canvas { display: block; }
+
+  /* ===== OVERLAYS ===== */
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    background: rgba(10,5,30,0.88);
+    backdrop-filter: blur(4px);
+    z-index: 10;
+  }
+  .overlay.hidden { display: none; }
+
+  .game-title {
+    font-size: 42px; font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 20px #ff6b9d, 0 0 40px #ff6b9d;
+    letter-spacing: -1px;
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+  .subtitle {
+    font-size: 14px; color: #b8a0ff;
+    margin-bottom: 28px; letter-spacing: 2px; text-transform: uppercase;
+  }
+  .instructions {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 14px;
+    padding: 18px 24px;
+    margin-bottom: 28px;
+    max-width: 320px;
+    text-align: left;
+  }
+  .instructions p {
+    color: #d0c0ff; font-size: 13px;
+    line-height: 1.8;
+  }
+  .instructions span { color: #ffd166; font-weight: 700; }
+
+  .btn {
+    padding: 14px 44px;
+    border-radius: 50px;
+    border: none; cursor: pointer;
+    font-size: 18px; font-weight: 800;
+    letter-spacing: 1px;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn:hover { transform: scale(1.06); }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: linear-gradient(135deg, #ff6b9d, #ff8c42);
+    color: #fff;
+    box-shadow: 0 6px 30px rgba(255,107,157,0.5);
+  }
+  .btn-secondary {
+    background: linear-gradient(135deg, #6c63ff, #3ecfcf);
+    color: #fff;
+    box-shadow: 0 6px 30px rgba(108,99,255,0.5);
+  }
+
+  /* Countdown */
+  #countdownOverlay {
+    position: absolute; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    z-index: 9; pointer-events: none;
+  }
+  #countdownOverlay.active { display: flex; }
+  #countdownNum {
+    font-size: 120px; font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 40px #ffd166;
+    animation: countPop 0.9s ease-in-out;
+  }
+  @keyframes countPop {
+    0%   { transform: scale(2); opacity: 0; }
+    30%  { transform: scale(1); opacity: 1; }
+    70%  { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.5); opacity: 0; }
+  }
+
+  /* Paused overlay */
+  #pausedOverlay { display: none; }
+  #pausedOverlay.active { display: flex; }
+  #pausedOverlay .game-title { font-size: 52px; }
+
+  /* Level up */
+  #levelUpBanner {
+    position: absolute; top: 80px; left: 50%;
+    transform: translateX(-50%) translateY(-100px);
+    background: linear-gradient(135deg, #ffd166, #ff6b9d);
+    color: #fff; font-weight: 900; font-size: 22px;
+    padding: 12px 36px; border-radius: 50px;
+    pointer-events: none; z-index: 8;
+    transition: transform 0.5s cubic-bezier(.34,1.56,.64,1), opacity 0.4s;
+    opacity: 0;
+    box-shadow: 0 4px 24px rgba(255,107,157,0.6);
+    white-space: nowrap;
+  }
+  #levelUpBanner.show {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: 12px 16px 0;
+    display: flex; align-items: center; justify-content: space-between;
+    pointer-events: none; z-index: 5;
+  }
+  .hud-box {
+    background: rgba(10,5,30,0.6);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 12px;
+    padding: 5px 13px;
+    color: #fff; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+    backdrop-filter: blur(8px);
+  }
+  .hud-val { font-size: 18px; color: #ffd166; }
+  .hud-lives { display: flex; gap: 4px; }
+  .life-icon { font-size: 18px; }
+
+  /* Score popup (rendered on canvas, no DOM needed) */
+
+  /* Mobile controls */
+  #mobileControls {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 80px;
+    display: none;
+    align-items: center; justify-content: space-between;
+    padding: 0 24px 12px;
+    z-index: 6;
+  }
+  @media (pointer: coarse) { #mobileControls { display: flex; } }
+  .mob-btn {
+    width: 70px; height: 60px;
+    background: rgba(255,255,255,0.12);
+    border: 1.5px solid rgba(255,255,255,0.22);
+    border-radius: 16px;
+    color: #fff; font-size: 28px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+    transition: background 0.1s;
+  }
+  .mob-btn:active { background: rgba(255,255,255,0.28); }
+
+  /* Game over stats */
+  .stat-row {
+    display: flex; justify-content: space-between;
+    width: 260px; padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    color: #b8a0ff; font-size: 15px;
+  }
+  .stat-row span:last-child { color: #ffd166; font-weight: 700; font-size: 17px; }
+  .new-best { color: #ff6b9d !important; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+  .gap8 { gap: 8px; display: flex; flex-direction: column; margin-bottom: 24px; width: 260px; }
+</style>
+</head>
+<body>
+
+<div id="gameWrapper">
+  <canvas id="gameCanvas" width="480" height="680"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-box">🏆 <span class="hud-val" id="hudScore">0</span></div>
+    <div class="hud-box">⚡ LVL <span class="hud-val" id="hudLevel">1</span></div>
+    <div class="hud-box"><div class="hud-lives" id="hudLives"></div></div>
+  </div>
+
+  <!-- Level Up Banner -->
+  <div id="levelUpBanner">🎉 LEVEL UP!</div>
+
+  <!-- Countdown -->
+  <div id="countdownOverlay">
+    <div id="countdownNum">3</div>
+  </div>
+
+  <!-- Pause Overlay -->
+  <div class="overlay hidden" id="pausedOverlay">
+    <div class="game-title">⏸️</div>
+    <div class="game-title" style="font-size:32px;margin-top:12px">PAUSED</div>
+    <p style="color:#b8a0ff;margin-top:16px;font-size:14px">Press <b style="color:#ffd166">P</b> to resume</p>
+  </div>
+
+  <!-- Start Screen -->
+  <div class="overlay" id="startScreen">
+    <div class="game-title">🐰 Rabbit<br>Fruit Catcher</div>
+    <div class="subtitle">Catch • Dodge • Survive</div>
+    <div class="instructions">
+      <p>
+        🍎 Catch fruits to score points<br>
+        💀 <span>Rotten fruits = instant Game Over!</span><br>
+        ❤️ Miss 3 fruits → Game Over<br>
+        ⬅️➡️ Arrow keys or tap to move<br>
+        <span>P</span> to pause the game
+      </p>
+    </div>
+    <button class="btn btn-primary" id="startBtn">🎮 PLAY NOW</button>
+    <p id="highScoreDisplay" style="color:#b8a0ff;margin-top:16px;font-size:13px"></p>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div class="overlay hidden" id="gameOverScreen">
+    <div class="game-title" style="font-size:36px;margin-bottom:4px">💀 GAME OVER</div>
+    <p style="color:#ff6b9d;font-size:14px;margin-bottom:22px;letter-spacing:1px">BETTER LUCK NEXT TIME!</p>
+    <div class="gap8">
+      <div class="stat-row"><span>Score</span><span id="goScore">0</span></div>
+      <div class="stat-row"><span>Level Reached</span><span id="goLevel">1</span></div>
+      <div class="stat-row"><span>Fruits Caught</span><span id="goCaught">0</span></div>
+      <div class="stat-row"><span>Best Score</span><span id="goBest" class="">0</span></div>
+    </div>
+    <button class="btn btn-secondary" id="restartBtn">🔄 PLAY AGAIN</button>
+  </div>
+
+  <!-- Mobile Controls -->
+  <div id="mobileControls">
+    <div class="mob-btn" id="leftBtn">◀</div>
+    <div style="color:rgba(255,255,255,0.3);font-size:12px;text-align:center">MOVE</div>
+    <div class="mob-btn" id="rightBtn">▶</div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   RABBIT FRUIT CATCHER — Full Game Source
+   Sections:
+   1. Canvas & Context Setup
+   2. Game State
+   3. Audio (Web Audio API tones)
+   4. Asset Drawing (rabbit, fruits, basket, bg)
+   5. Particle System
+   6. Fruit Spawning
+   7. Player (Rabbit)
+   8. Collision Detection
+   9. UI Updates
+   10. Game Loop
+   11. Input Handling
+   12. Start / Game Over Logic
+============================================================ */
+
+// ─── 1. CANVAS & CONTEXT ───────────────────────────────────
+const canvas = document.getElementById('gameCanvas');
+const ctx    = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// ─── 2. GAME STATE ─────────────────────────────────────────
+let state = {};
+function resetState() {
+  return {
+    running:      false,
+    paused:       false,
+    score:        0,
+    lives:        3,
+    level:        1,
+    fruitsCaught: 0,
+    misses:       0,
+    fruits:       [],
+    particles:    [],
+    scorePopups:  [],
+    clouds:       initClouds(),
+    spawnTimer:   0,
+    spawnInterval:90,   // frames between spawns
+    baseSpeed:    2.4,
+    highScore:    parseInt(localStorage.getItem('rfc_hs') || '0'),
+    frameCount:   0,
+    lastTime:     0,
+    keys:         { left: false, right: false },
+  };
+}
+
+// ─── 3. AUDIO ──────────────────────────────────────────────
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playTone(freq, type, duration, vol = 0.18) {
+  try {
+    const ac = getAudio();
+    const o = ac.createOscillator();
+    const g = ac.createGain();
+    o.connect(g); g.connect(ac.destination);
+    o.type = type; o.frequency.setValueAtTime(freq, ac.currentTime);
+    g.gain.setValueAtTime(vol, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + duration);
+    o.start(); o.stop(ac.currentTime + duration);
+  } catch(e) {}
+}
+function sfxCatch()   { playTone(880, 'sine', 0.12); playTone(1200,'sine',0.09,0.1); }
+function sfxMiss()    { playTone(200, 'sawtooth', 0.2, 0.12); }
+function sfxLevelUp() { [600,800,1000,1200].forEach((f,i)=>setTimeout(()=>playTone(f,'sine',0.18),i*80)); }
+function sfxGameOver(){ [400,300,200,150].forEach((f,i)=>setTimeout(()=>playTone(f,'sawtooth',0.25,0.15),i*120)); }
+function sfxRotten()  { playTone(100,'sawtooth',0.4,0.2); }
+
+// ─── 4. DRAWING HELPERS ────────────────────────────────────
+
+// Background: sky gradient
+function drawBackground() {
+  const grad = ctx.createLinearGradient(0,0,0,H);
+  grad.addColorStop(0,   '#0d1b4b');
+  grad.addColorStop(0.6, '#1a3a6b');
+  grad.addColorStop(1,   '#0d1b4b');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// Animated clouds
+function initClouds() {
+  return Array.from({length: 5}, (_, i) => ({
+    x: Math.random() * W,
+    y: 50 + i * 55,
+    w: 80 + Math.random() * 80,
+    speed: 0.2 + Math.random() * 0.3,
+    alpha: 0.08 + Math.random() * 0.1
+  }));
+}
+function drawClouds(clouds) {
+  clouds.forEach(c => {
+    ctx.save();
+    ctx.globalAlpha = c.alpha;
+    ctx.fillStyle = '#fff';
+    // blob cloud
+    ctx.beginPath();
+    ctx.arc(c.x,         c.y, c.w * 0.38, 0, Math.PI*2);
+    ctx.arc(c.x+c.w*0.28, c.y-c.w*0.1, c.w*0.28, 0, Math.PI*2);
+    ctx.arc(c.x+c.w*0.55, c.y, c.w*0.3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    c.x += c.speed;
+    if (c.x > W + c.w) c.x = -c.w;
+  });
+}
+
+// Grass at bottom
+function drawGround() {
+  // dirt
+  const dg = ctx.createLinearGradient(0, H-48, 0, H);
+  dg.addColorStop(0, '#3d2b0e');
+  dg.addColorStop(1, '#2a1a08');
+  ctx.fillStyle = dg;
+  ctx.fillRect(0, H-48, W, 48);
+
+  // grass strip
+  const gg = ctx.createLinearGradient(0, H-58, 0, H-40);
+  gg.addColorStop(0, '#4caf50');
+  gg.addColorStop(1, '#388e3c');
+  ctx.fillStyle = gg;
+  ctx.fillRect(0, H-58, W, 18);
+
+  // grass tufts
+  ctx.fillStyle = '#66bb6a';
+  for(let x=8; x<W; x+=22) {
+    const h = 8 + Math.sin(x*0.3)*4;
+    ctx.beginPath();
+    ctx.moveTo(x, H-58);
+    ctx.quadraticCurveTo(x+5, H-58-h, x+10, H-58);
+    ctx.fill();
+  }
+}
+
+// Stars (static, drawn once)
+let stars = Array.from({length:60},()=>({
+  x: Math.random()*480, y: Math.random()*400,
+  r: 0.5+Math.random()*1.5,
+  t: Math.random()*Math.PI*2
+}));
+function drawStars(frame) {
+  stars.forEach(s => {
+    s.t += 0.02;
+    const a = 0.3 + 0.3*Math.sin(s.t);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// ── RABBIT DRAWING ──
+function drawRabbit(x, y, bounce, dir) {
+  const bx = x, by = y + bounce;
+
+  ctx.save();
+  ctx.translate(bx, by);
+  if (dir < 0) { ctx.scale(-1, 1); }
+
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(0, 28, 26, 7, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // body
+  ctx.fillStyle = '#f0e8d8';
+  ctx.beginPath();
+  ctx.ellipse(0, 10, 22, 26, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // belly
+  ctx.fillStyle = '#fdf5e6';
+  ctx.beginPath();
+  ctx.ellipse(0, 14, 14, 18, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // head
+  ctx.fillStyle = '#f0e8d8';
+  ctx.beginPath();
+  ctx.arc(0, -22, 18, 0, Math.PI*2);
+  ctx.fill();
+
+  // ears
+  ctx.fillStyle = '#f0e8d8';
+  ctx.beginPath();
+  ctx.ellipse(-10, -46, 6, 18, -0.15, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(10, -46, 6, 18, 0.15, 0, Math.PI*2);
+  ctx.fill();
+
+  // inner ears
+  ctx.fillStyle = '#ffb3ba';
+  ctx.beginPath();
+  ctx.ellipse(-10, -46, 3, 12, -0.15, 0, Math.PI*2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(10, -46, 3, 12, 0.15, 0, Math.PI*2);
+  ctx.fill();
+
+  // eyes
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.arc(-7, -24, 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(7, -24, 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-5.5, -25.5, 1.2, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(8.5, -25.5, 1.2, 0, Math.PI*2); ctx.fill();
+
+  // nose
+  ctx.fillStyle = '#ff9aaa';
+  ctx.beginPath(); ctx.arc(0, -18, 3, 0, Math.PI*2); ctx.fill();
+
+  // mouth
+  ctx.strokeStyle = '#c47a7a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-5, -15); ctx.quadraticCurveTo(0, -11, 5, -15);
+  ctx.stroke();
+
+  // cheek blush
+  ctx.fillStyle = 'rgba(255,150,150,0.3)';
+  ctx.beginPath(); ctx.ellipse(-13, -19, 5, 4, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(13, -19, 5, 4, 0, 0, Math.PI*2); ctx.fill();
+
+  // tail
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(-19, 12, 8, 0, Math.PI*2); ctx.fill();
+
+  ctx.restore();
+
+  // BASKET
+  drawBasket(bx, by);
+}
+
+function drawBasket(bx, by) {
+  const bw = 60, bh = 30, bby = by + 30;
+
+  // basket body
+  ctx.save();
+  ctx.translate(bx, bby);
+
+  // weave bg
+  const bg = ctx.createLinearGradient(-bw/2, 0, bw/2, bh);
+  bg.addColorStop(0, '#c8860a');
+  bg.addColorStop(1, '#a06408');
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.moveTo(-bw/2, 0);
+  ctx.lineTo(-bw/2+4, bh);
+  ctx.lineTo(bw/2-4, bh);
+  ctx.lineTo(bw/2, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // weave lines H
+  ctx.strokeStyle = '#e5a020';
+  ctx.lineWidth = 1.5;
+  for(let i=1;i<4;i++) {
+    const yy = (bh/4)*i;
+    const xOff = (bh/4*i/bh)*4;
+    ctx.beginPath();
+    ctx.moveTo(-bw/2+xOff, yy);
+    ctx.lineTo(bw/2-xOff, yy);
+    ctx.stroke();
+  }
+
+  // weave lines V
+  for(let i=-2;i<=2;i++) {
+    ctx.beginPath();
+    ctx.moveTo(i*11, 0);
+    ctx.lineTo(i*11 + (i*11 > 0 ? -1 : 1)*1.5, bh);
+    ctx.stroke();
+  }
+
+  // rim
+  ctx.fillStyle = '#e5a020';
+  ctx.beginPath();
+  ctx.rect(-bw/2-2, -4, bw+4, 8);
+  ctx.fill();
+
+  // rim highlight
+  ctx.fillStyle = '#ffd166';
+  ctx.beginPath();
+  ctx.rect(-bw/2, -4, bw, 4);
+  ctx.fill();
+
+  // handle
+  ctx.strokeStyle = '#c8860a';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(0, -8, 22, Math.PI, 0);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ── FRUIT DRAWING ──
+const FRUITS = [
+  { name:'apple',      emoji:'🍎', color:'#e53935', secondary:'#b71c1c', score:10 },
+  { name:'banana',     emoji:'🍌', color:'#fdd835', secondary:'#f9a825', score:8  },
+  { name:'orange',     emoji:'🍊', color:'#fb8c00', secondary:'#e65100', score:9  },
+  { name:'grapes',     emoji:'🍇', color:'#8e24aa', secondary:'#4a148c', score:12 },
+  { name:'strawberry', emoji:'🍓', color:'#e91e63', secondary:'#880e4f', score:11 },
+];
+const ROTTEN = { name:'rotten', emoji:'💀', color:'#4a4a00', secondary:'#1a1a00', score:0 };
+
+function drawFruit(f) {
+  ctx.save();
+  ctx.translate(f.x, f.y);
+  ctx.rotate(f.rot);
+
+  const r = f.radius;
+
+  if (f.type.name === 'rotten') {
+    // glow
+    ctx.shadowColor = '#00ff00';
+    ctx.shadowBlur  = 14;
+
+    ctx.fillStyle = '#333800';
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = '#5a5a00';
+    ctx.beginPath(); ctx.arc(-r*0.3, -r*0.2, r*0.35, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r*0.25, r*0.1, r*0.3, 0, Math.PI*2); ctx.fill();
+
+    // skull
+    ctx.fillStyle = '#00ff88';
+    ctx.font = `${r*1.2}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('☠', 0, 2);
+
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.fillStyle = f.type.color;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = f.type.secondary;
+    ctx.beginPath(); ctx.arc(r*0.25, r*0.25, r*0.35, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(-r*0.28, -r*0.28, r*0.22, 0, Math.PI*2); ctx.fill();
+
+    ctx.font = `${r*1.3}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(f.type.emoji, 0, 2);
+  }
+
+  ctx.restore();
+}
+
+// ─── 5. PARTICLES ──────────────────────────────────────────
+function spawnParticles(x, y, color) {
+  for(let i=0;i<18;i++) {
+    state.particles.push({
+      x, y,
+      vx: (Math.random()-0.5)*9,
+      vy: (Math.random()-0.5)*9 - 2,
+      r: 3+Math.random()*5,
+      alpha: 1,
+      color,
+      decay: 0.035+Math.random()*0.03
+    });
+  }
+}
+function updateParticles() {
+  state.particles = state.particles.filter(p => p.alpha > 0);
+  state.particles.forEach(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.2;
+    p.alpha -= p.decay;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// Score popups
+function spawnScorePopup(x, y, text) {
+  state.scorePopups.push({ x, y: y - 20, text, alpha: 1, vy: -1.4 });
+}
+function updateScorePopups() {
+  state.scorePopups = state.scorePopups.filter(p => p.alpha > 0);
+  state.scorePopups.forEach(p => {
+    p.y += p.vy;
+    p.alpha -= 0.022;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.alpha);
+    ctx.fillStyle = '#ffd166';
+    ctx.strokeStyle = '#1a0a2e';
+    ctx.lineWidth = 3;
+    ctx.font = 'bold 22px Segoe UI';
+    ctx.textAlign = 'center';
+    ctx.strokeText(p.text, p.x, p.y);
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+  });
+}
+
+// ─── 6. FRUIT SPAWNING ─────────────────────────────────────
+function spawnFruit() {
+  const margin = 40;
+  const x = margin + Math.random() * (W - margin*2);
+  const isRotten = Math.random() < 0.12 + (state.level - 1) * 0.018;
+  const type = isRotten ? ROTTEN : FRUITS[Math.floor(Math.random()*FRUITS.length)];
+  const speedMul = 1 + (state.level - 1) * 0.18;
+  const speed = (state.baseSpeed + Math.random() * 2) * speedMul;
+
+  state.fruits.push({
+    x, y: -30,
+    vy: speed,
+    radius: 22,
+    type,
+    rot: 0,
+    rotSpeed: (Math.random()-0.5)*0.08,
+    caught: false,
+    missed: false,
+  });
+}
+
+// ─── 7. PLAYER ─────────────────────────────────────────────
+const player = {
+  x: W/2, y: H - 90,
+  speed: 5.5,
+  bounce: 0,
+  bounceDir: 1,
+  dir: 1,
+  moving: false,
+};
+
+function updatePlayer() {
+  const { keys } = state;
+  player.moving = keys.left || keys.right;
+
+  if (keys.left && !keys.right) {
+    player.x -= player.speed;
+    player.dir = -1;
+  }
+  if (keys.right && !keys.left) {
+    player.x += player.speed;
+    player.dir = 1;
+  }
+
+  // boundaries (account for basket width)
+  player.x = Math.max(50, Math.min(W - 50, player.x));
+
+  // bounce animation
+  if (player.moving) {
+    player.bounce += 0.4 * player.bounceDir;
+    if (Math.abs(player.bounce) > 4) player.bounceDir *= -1;
+  } else {
+    player.bounce *= 0.7;
+    if (Math.abs(player.bounce) < 0.1) player.bounce = 0;
+  }
+}
+
+// ─── 8. COLLISION DETECTION ────────────────────────────────
+const BASKET_W = 60, BASKET_H = 30;
+
+function checkCollisions() {
+  const bLeft  = player.x - BASKET_W/2;
+  const bRight = player.x + BASKET_W/2;
+  const bTop   = player.y + player.bounce + 28;   // basket top
+  const bBot   = bTop + BASKET_H;
+
+  state.fruits.forEach(f => {
+    if (f.caught || f.missed) return;
+
+    // Catch detection (center of fruit inside basket zone)
+    if (f.y + f.radius >= bTop && f.y - f.radius <= bBot &&
+        f.x >= bLeft && f.x <= bRight) {
+      f.caught = true;
+
+      if (f.type.name === 'rotten') {
+        sfxRotten();
+        spawnParticles(f.x, f.y, '#00ff00');
+        triggerGameOver();
+        return;
+      }
+
+      // Good catch
+      sfxCatch();
+      spawnParticles(f.x, f.y, f.type.color);
+      spawnScorePopup(f.x, f.y, '+' + f.type.score);
+      state.score += f.type.score;
+      state.fruitsCaught++;
+      updateHUD();
+      checkLevelUp();
+      return;
+    }
+
+    // Missed: fruit passed bottom
+    if (f.y - f.radius > H) {
+      f.missed = true;
+      if (f.type.name !== 'rotten') {
+        state.lives--;
+        sfxMiss();
+        updateHUD();
+        if (state.lives <= 0) triggerGameOver();
+      }
+    }
+  });
+
+  // Clean up
+  state.fruits = state.fruits.filter(f => !f.caught && !f.missed);
+}
+
+// ─── 9. UI UPDATES ─────────────────────────────────────────
+function updateHUD() {
+  document.getElementById('hudScore').textContent = state.score;
+  document.getElementById('hudLevel').textContent = state.level;
+  const livesEl = document.getElementById('hudLives');
+  livesEl.innerHTML = '';
+  for(let i=0;i<3;i++) {
+    const s = document.createElement('span');
+    s.className = 'life-icon';
+    s.textContent = i < state.lives ? '❤️' : '🖤';
+    livesEl.appendChild(s);
+  }
+}
+
+function checkLevelUp() {
+  const newLevel = Math.floor(state.fruitsCaught / 10) + 1;
+  if (newLevel > state.level) {
+    state.level = newLevel;
+    state.spawnInterval = Math.max(35, 90 - (state.level - 1) * 7);
+    sfxLevelUp();
+    showLevelUpBanner();
+    updateHUD();
+  }
+}
+
+function showLevelUpBanner() {
+  const el = document.getElementById('levelUpBanner');
+  el.textContent = `⚡ LEVEL ${state.level}!`;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2000);
+}
+
+// ─── 10. GAME LOOP ─────────────────────────────────────────
+let animId = null;
+
+function gameLoop(timestamp) {
+  if (!state.running || state.paused) return;
+
+  state.frameCount++;
+
+  // Clear
+  ctx.clearRect(0, 0, W, H);
+
+  // BG layers
+  drawBackground();
+  drawStars(state.frameCount);
+  drawClouds(state.clouds);
+  drawGround();
+
+  // Spawn fruits
+  state.spawnTimer++;
+  if (state.spawnTimer >= state.spawnInterval) {
+    state.spawnTimer = 0;
+    spawnFruit();
+  }
+
+  // Update & draw fruits
+  state.fruits.forEach(f => {
+    f.y  += f.vy;
+    f.rot += f.rotSpeed;
+    drawFruit(f);
+  });
+
+  // Update player
+  updatePlayer();
+  drawRabbit(player.x, player.y, player.bounce, player.dir);
+
+  // Collisions
+  checkCollisions();
+
+  // FX
+  updateParticles();
+  updateScorePopups();
+
+  animId = requestAnimationFrame(gameLoop);
+}
+
+// ─── 11. INPUT HANDLING ────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowLeft')  { state.keys.left  = true; e.preventDefault(); }
+  if (e.key === 'ArrowRight') { state.keys.right = true; e.preventDefault(); }
+  if ((e.key === 'p' || e.key === 'P') && state.running) togglePause();
+});
+document.addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft')  state.keys.left  = false;
+  if (e.key === 'ArrowRight') state.keys.right = false;
+});
+
+// Mobile buttons
+const leftBtn  = document.getElementById('leftBtn');
+const rightBtn = document.getElementById('rightBtn');
+function addTouch(btn, key) {
+  btn.addEventListener('touchstart', e => { e.preventDefault(); state.keys[key] = true;  }, { passive: false });
+  btn.addEventListener('touchend',   e => { e.preventDefault(); state.keys[key] = false; }, { passive: false });
+  btn.addEventListener('mousedown',  ()=> state.keys[key] = true  );
+  btn.addEventListener('mouseup',    ()=> state.keys[key] = false );
+}
+addTouch(leftBtn,  'left');
+addTouch(rightBtn, 'right');
+
+function togglePause() {
+  state.paused = !state.paused;
+  const overlay = document.getElementById('pausedOverlay');
+  overlay.classList.toggle('hidden', !state.paused);
+  if (!state.paused) {
+    state.keys.left = false;
+    state.keys.right = false;
+    animId = requestAnimationFrame(gameLoop);
+  }
+}
+
+// ─── 12. START / GAME OVER ─────────────────────────────────
+function showStartScreen() {
+  const hs = parseInt(localStorage.getItem('rfc_hs') || '0');
+  if (hs > 0) {
+    document.getElementById('highScoreDisplay').textContent = `🏆 Best Score: ${hs}`;
+  }
+  document.getElementById('startScreen').classList.remove('hidden');
+}
+
+function startCountdown(cb) {
+  const overlay = document.getElementById('countdownOverlay');
+  const num     = document.getElementById('countdownNum');
+  overlay.classList.add('active');
+  let count = 3;
+  num.textContent = count;
+  const tick = setInterval(() => {
+    count--;
+    if (count === 0) {
+      num.textContent = 'GO!';
+      setTimeout(() => {
+        overlay.classList.remove('active');
+        clearInterval(tick);
+        cb();
+      }, 700);
+    } else {
+      num.textContent = count;
+    }
+  }, 900);
+}
+
+function startGame() {
+  state = resetState();
+  state.running = true;
+  player.x = W/2;
+  player.bounce = 0;
+  updateHUD();
+  animId = requestAnimationFrame(gameLoop);
+}
+
+function triggerGameOver() {
+  state.running = false;
+  if (animId) cancelAnimationFrame(animId);
+  sfxGameOver();
+
+  const hs = Math.max(state.highScore, state.score);
+  localStorage.setItem('rfc_hs', hs);
+
+  document.getElementById('goScore').textContent  = state.score;
+  document.getElementById('goLevel').textContent  = state.level;
+  document.getElementById('goCaught').textContent = state.fruitsCaught;
+  const goBest = document.getElementById('goBest');
+  goBest.textContent = hs;
+  goBest.className = state.score > state.highScore && state.score > 0 ? 'new-best' : '';
+
+  setTimeout(() => {
+    document.getElementById('gameOverScreen').classList.remove('hidden');
+  }, 500);
+}
+
+// Button handlers
+document.getElementById('startBtn').addEventListener('click', () => {
+  document.getElementById('startScreen').classList.add('hidden');
+  startCountdown(startGame);
+});
+document.getElementById('restartBtn').addEventListener('click', () => {
+  document.getElementById('gameOverScreen').classList.add('hidden');
+  document.getElementById('pausedOverlay').classList.add('hidden');
+  startCountdown(startGame);
+});
+
+// Draw a static frame on load
+(function initFrame() {
+  state = resetState();
+  drawBackground();
+  drawStars(0);
+  drawClouds(state.clouds);
+  drawGround();
+  drawRabbit(W/2, H-90, 0, 1);
+  showStartScreen();
+})();
+</script>
+</body>
+</html>
